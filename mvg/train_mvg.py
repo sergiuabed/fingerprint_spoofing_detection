@@ -18,13 +18,14 @@ def train_mvg():
     DTR, LTR = load_data('dataset/Train.txt')
     working_point = (0.5, 1, 10)
 
-    s, P = PCA_matrix(DTR, 10)
+    #s, P = PCA_matrix(DTR, 10)
 
-    DP = DTR#np.dot(P.T, DTR)
+    #DP = DTR#np.dot(P.T, DTR)
 
     eff_prior = to_effective_prior(working_point)
     
-    folds, labels_folds = split_k_folds(DP, LTR, K, TRAIN_SEED)
+    #folds, labels_folds = split_k_folds(DP, LTR, K, TRAIN_SEED)
+    folds, labels_folds = split_k_folds(DTR, LTR, K, TRAIN_SEED)
     labels_sh = np.concatenate(labels_folds)
 
     path = os.getcwd() + '/mvg/results'
@@ -33,17 +34,18 @@ def train_mvg():
 
     with open(f'{path}/log.txt', 'w') as f:
         for mode in ['default', 'diag', 'tied']:
-            for pca_dim in [None, 9, 8, 7, 6]:
+            for pca_dim in [-1, 9, 8, 7, 6]:
                 print(f"--------------------mode: {mode}     PCA_dim: {pca_dim}--------------------\n")
                 f.write(f"--------------------mode: {mode}     PCA_dim: {pca_dim}--------------------\n")
 
-                if pca_dim is None:
-                    DP = DTR
-                else:
-                    s, P = PCA_matrix(DTR, pca_dim)
-                    DP = np.dot(P.T, DTR)   #project on lower space
+#                if pca_dim is None:
+#                    DP = DTR
+#                else:
+#                    s, P = PCA_matrix(DTR, pca_dim)
+#                    DP = np.dot(P.T, DTR)   #project on lower space
 
-                params, scores = MVG_k_fold_train(DP, LTR, K, TRAIN_SEED, mode)
+                #params, scores = MVG_k_fold_train(DP, LTR, K, TRAIN_SEED, mode)
+                params, scores = MVG_k_fold_train(DTR, LTR, K, TRAIN_SEED, pca_dim, mode)
 
                 pl = binary_optimal_bayes_decision(scores, working_point)
                 cm = get_confusion_matrix(pl.reshape((pl.size,)), labels_sh, 2)

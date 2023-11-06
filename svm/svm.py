@@ -1,7 +1,8 @@
 import numpy as np
 import scipy.optimize
 import sklearn
-from data_utils import split_k_folds, covarMat, datasetMean, get_empirical_prior
+from data_utils import split_k_folds, covarMat, datasetMean, get_empirical_prior, z_norm
+from dimensionality_reduction import PCA_matrix
 
 def kernel_polynomial_wrap(c, degree, k):
     '''
@@ -137,7 +138,7 @@ def svm_accuracy(classifier, DTE, LTE):
 def duality_gap(primal_obj, dual_obj, w_b, _alphas):
     return primal_obj(w_b) + dual_obj(_alphas)[0]
 
-def svm_k_fold_train(DTR, LTR, k, seed, kv, c, eff_prior, kernel=None):
+def svm_k_fold_train(DTR, LTR, k, seed, kv, c, apply_znorm, pca_dim, eff_prior, kernel=None):
     '''
     This function returns tuple (params, scores)
     
@@ -157,7 +158,29 @@ def svm_k_fold_train(DTR, LTR, k, seed, kv, c, eff_prior, kernel=None):
         train_folds = np.hstack([folds[j] for j in range(k) if i != j])
         train_labels = np.concatenate([labels_folds[j] for j in range(k) if i != j])
 
-        x0 = np.zeros((train_folds.shape[1]), dtype=float)
+
+        # z-normalization
+        if apply_znorm is True:
+            train_folds_znorm, mu, sd = z_norm(train_folds)
+            test_fold_znorm, _, _ = z_norm(test_fold, mu, sd)
+        else:
+            mu = datasetMean(train_folds)
+            train_folds_znorm = train_folds - mu
+            test_fold_znorm = test_fold - mu
+
+        # pca
+        if pca_dim < 0:
+            train_folds_proj = train_folds_znorm
+            test_fold_proj = test_fold_znorm
+        else:
+            mu_train = datasetMean(train_folds_znorm)
+            s, P = PCA_matrix(train_folds_znorm, pca_dim)
+            train_folds_proj = np.dot(P.T, train_folds_znorm - mu_train)   #project on lower space
+            test_fold_proj = np.dot(P.T, test_fold_znorm - mu_train)
+
+
+        #x0 = np.zeros((train_folds.shape[1]), dtype=float)
+        x0 = np.zeros((train_folds_proj.shape[1]), dtype=float)
         
         _, priors = get_empirical_prior(train_labels)
         pi_t = priors[1]
@@ -170,13 +193,13 @@ def svm_k_fold_train(DTR, LTR, k, seed, kv, c, eff_prior, kernel=None):
 
         # train
         # dual optimization
-        svm_dual_obj = svm_dual_obj_wrap(train_folds, train_labels, kv, kernel=kernel)
+        svm_dual_obj = svm_dual_obj_wrap(train_folds_proj, train_labels, kv, kernel=kernel)
         #solution = scipy.optimize.fmin_l_bfgs_b(svm_dual_obj, x0=x0, bounds=[(0, c) for _ in range(train_folds.shape[1])], factr=1.0)
         solution = scipy.optimize.fmin_l_bfgs_b(svm_dual_obj, x0=x0, bounds=bounds, factr=1.0)
 
         _alphas = np.array(solution[0]).reshape(len(solution[0]), 1)
         loss_dual = solution[1]
-        svm_dual_classifier, w_b1 = svm_dual_classifier_wrap(_alphas, train_folds, train_labels, kv, kernel=kernel)
+        svm_dual_classifier, w_b1 = svm_dual_classifier_wrap(_alphas, train_folds_proj, train_labels, kv, kernel=kernel)
 
         #primal optimization
 #        svm_primal_obj = svm_primal_obj_wrap(train_folds, train_labels, kv, c)
@@ -192,14 +215,32 @@ def svm_k_fold_train(DTR, LTR, k, seed, kv, c, eff_prior, kernel=None):
 #        print(f"        Duality gap: {'{:e}'.format(gap)}")
 
         # test
-        test_scores.append(svm_dual_classifier(test_fold))
+        test_scores.append(svm_dual_classifier(test_fold_proj))
 
     scores = np.hstack(test_scores)
     print(scores.shape)
 
     # train on whole data
     # dual optimization
-    x0 = np.zeros((DTR.shape[1]), dtype=float)
+
+
+    # z-normalization
+    if apply_znorm is True:
+        DTR_znorm, mu, sd = z_norm(DTR)
+    else:
+        mu = datasetMean(DTR)
+        DTR_znorm = DTR - mu
+
+    # pca
+    if pca_dim < 0:
+        DTR_proj = DTR_znorm
+    else:
+        mu_train = datasetMean(DTR_znorm)
+        s, P = PCA_matrix(DTR_znorm, pca_dim)
+        DTR_proj = np.dot(P.T, DTR_znorm - mu_train)   #project on lower space
+
+
+    x0 = np.zeros((DTR_proj.shape[1]), dtype=float)
 
     _, priors = get_empirical_prior(LTR)
     pi_t = priors[1]
@@ -210,12 +251,12 @@ def svm_k_fold_train(DTR, LTR, k, seed, kv, c, eff_prior, kernel=None):
 
     bounds = [(0, c_t) if i == 1 else (0, c_n) for i in LTR]
 
-    svm_dual_obj = svm_dual_obj_wrap(DTR, LTR, kv)
+    svm_dual_obj = svm_dual_obj_wrap(DTR_proj, LTR, kv, kernel=kernel)
     #solution = scipy.optimize.fmin_l_bfgs_b(svm_dual_obj, x0=x0, bounds=[(0, c) for _ in range(DTR.shape[1])], factr=1.0)
     solution = scipy.optimize.fmin_l_bfgs_b(svm_dual_obj, x0=x0, bounds=bounds, factr=1.0)
 
     _alphas = np.array(solution[0]).reshape(len(solution[0]), 1)
-    svm_dual_classifier, w_b1 = svm_dual_classifier_wrap(_alphas, DTR, LTR, kv)
+    svm_dual_classifier, w_b1 = svm_dual_classifier_wrap(_alphas, DTR_proj, LTR, kv, kernel=kernel)
 
     params = _alphas
 

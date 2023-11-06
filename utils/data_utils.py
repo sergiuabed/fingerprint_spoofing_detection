@@ -76,7 +76,19 @@ def get_empirical_prior(LTR):
 
     return nr_samples, priors
 
-#def z_norm
+def z_norm(DTR, mu=None, sd=None):
+
+    if mu is None:
+        DTR_c = DTR - datasetMean(DTR)
+    else:
+        DTR_c = DTR - mu
+
+    if sd is None:
+        sd = np.std(DTR_c, axis=1).reshape((DTR_c.shape[0], 1))
+
+    DTR_znorm = DTR_c / sd
+
+    return DTR_znorm, mu, sd
 
 def expand_features(DTR):
     expanded_samples = []

@@ -1,3 +1,7 @@
 __pycache__
 plots
 results
+results_linear
+results_rbf
+results_poly
+results_poly_3rd

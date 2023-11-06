@@ -1,7 +1,8 @@
 import numpy as np
 import scipy.optimize
 import sklearn
-from utils.data_utils import split_k_folds, covarMat, datasetMean
+from utils.data_utils import split_k_folds, covarMat, datasetMean, z_norm, expand_features
+from utils.dimensionality_reduction import PCA_matrix
 
 def logreg_obj_wrap(DTR, LTR, _lambda):
     def logreg_obj(v):
@@ -78,22 +79,45 @@ def logreg_accuracy(classifier, DTE, LTE):
 
     return np.sum(correct_preds)/correct_preds.size
 
-def logreg_k_fold_train(DTR, LTR, k, seed, _lambda, eff_prior):
+def logreg_k_fold_train(DTR, LTR, k, seed, _lambda, expand_feat, pca_dim, apply_znorm, eff_prior):
     folds, labels_folds = split_k_folds(DTR, LTR, k, seed)
 
     test_scores = []
     for i in range(k):
-        print(f"Fold {i}")
+        #print(f"Fold {i}")
         test_fold = folds[i]
         test_labels = labels_folds[i]
 
         train_folds = np.hstack([folds[j] for j in range(k) if i != j])
         train_labels = np.concatenate([labels_folds[j] for j in range(k) if i != j])
 
+        # z-normalization
+        if apply_znorm is True:
+            train_folds_znorm, mu, sd = z_norm(train_folds)
+            test_fold_znorm, _, _ = z_norm(test_fold, mu, sd)
+        else:
+            mu = datasetMean(train_folds)
+            train_folds_znorm = train_folds - mu
+            test_fold_znorm = test_fold - mu
+
+        # pca
+        if pca_dim < 0:
+            train_folds_proj = train_folds_znorm
+            test_fold_proj = test_fold_znorm
+        else:
+            mu_train = datasetMean(train_folds_znorm)
+            s, P = PCA_matrix(train_folds_znorm, pca_dim)
+            train_folds_proj = np.dot(P.T, train_folds_znorm - mu_train)   #project on lower space
+            test_fold_proj = np.dot(P.T, test_fold_znorm - mu_train)
+
+        if expand_feat is True:
+            train_folds_proj = expand_features(train_folds_proj)
+            test_fold_proj = expand_features(test_fold_proj)
+
         # train
-        logreg_obj = logreg_prior_weighted_obj_wrap(train_folds, train_labels, _lambda, eff_prior)
+        logreg_obj = logreg_prior_weighted_obj_wrap(train_folds_proj, train_labels, _lambda, eff_prior)
         #logreg_obj = logreg_obj_wrap(train_folds, train_labels, _lambda)
-        solution = scipy.optimize.fmin_l_bfgs_b(logreg_obj,  x0=np.zeros(train_folds.shape[0] + 1), approx_grad=True)
+        solution = scipy.optimize.fmin_l_bfgs_b(logreg_obj,  x0=np.zeros(train_folds_proj.shape[0] + 1), approx_grad=True)
 
         w = np.array(solution[0][0:-1]).reshape(len(solution[0][0:-1]), 1)
         b = solution[0][-1]
@@ -101,15 +125,34 @@ def logreg_k_fold_train(DTR, LTR, k, seed, _lambda, eff_prior):
 
         # test
         #test_scores.append(logreg_classifier(test_fold))
-        test_scores.append(logreg_classifier(test_fold) - np.log(eff_prior/(1-eff_prior)))
+        test_scores.append(logreg_classifier(test_fold_proj) - np.log(eff_prior/(1-eff_prior)))
         
     scores = np.hstack(test_scores)
-    print(scores.shape)
+    #print(scores.shape)
 
     # train on whole data
-    logreg_obj = logreg_prior_weighted_obj_wrap(DTR, LTR, _lambda, eff_prior)
+
+    # z-normalization
+    if apply_znorm is True:
+        DTR_znorm, mu, sd = z_norm(DTR)
+    else:
+        mu = datasetMean(DTR)
+        DTR_znorm = DTR - mu
+
+    # pca
+    if pca_dim < 0:
+        DTR_proj = DTR_znorm
+    else:
+        mu_train = datasetMean(DTR_znorm)
+        s, P = PCA_matrix(DTR_znorm, pca_dim)
+        DTR_proj = np.dot(P.T, DTR_znorm - mu_train)   #project on lower space
+
+    if expand_features is True:
+        DTR_proj = expand_features(DTR_proj)
+
+    logreg_obj = logreg_prior_weighted_obj_wrap(DTR_proj, LTR, _lambda, eff_prior)
     #logreg_obj = logreg_obj_wrap(DTR, LTR, _lambda)
-    solution = scipy.optimize.fmin_l_bfgs_b(logreg_obj,  x0=np.zeros(train_folds.shape[0] + 1), approx_grad=True)
+    solution = scipy.optimize.fmin_l_bfgs_b(logreg_obj,  x0=np.zeros(DTR_proj.shape[0] + 1), approx_grad=True)
 
     w = np.array(solution[0][0:-1]).reshape(len(solution[0][0:-1]), 1)
     b = solution[0][-1]
