@@ -1,6 +1,11 @@
+import sys
+sys.path.append('.')
+sys.path.append('./utils')
+
 import numpy as np
 import matplotlib.pyplot as plt
-from measurements import get_confusion_matrix, bayes_risk, minimum_bayes_risk, binary_optimal_bayes_decision
+from utils.measurements import get_confusion_matrix, bayes_risk, minimum_bayes_risk, binary_optimal_bayes_decision
+from utils.data_utils import load_data, split_k_folds, to_effective_prior
 
 def plot_heatmap(data, title, color):
     cov_mat = covarMat(data)
@@ -109,3 +114,195 @@ def covarMat(X):
     covMat = np.dot(X_centered, X_centered.T) / X.shape[1]
 
     return covMat
+
+def logreg_perf_plot(path, working_point, title):
+    DTR, LTR = load_data('dataset/Train.txt')
+    folds, labels_folds = split_k_folds(DTR, LTR, 5, 22)
+    labels = np.concatenate(labels_folds)
+
+    _lambdas = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2]
+    plot_dict = {}
+    for apply_znorm in [True, False]:
+        for pca_dim in [-1, 9, 8, 7, 6]:
+            plot_dict[(apply_znorm, pca_dim)] = []
+            for l in _lambdas:
+                scores_path = f"{path}/scores_linearlogreg_effpr_{{to_effective_prior(working_point)}}_znorm_{apply_znorm}_pcadim_{pca_dim}_lambda_{l}.npy"
+                scores = np.load(scores_path)
+
+                #minDCF.append(minimum_bayes_risk(scores, labels, working_point, svm_scores=False))
+                plot_dict[(apply_znorm, pca_dim)].append(minimum_bayes_risk(scores.reshape(scores.size,), labels, working_point, svm_scores=False))
+
+            print(f"Done {(apply_znorm, pca_dim)}")
+
+    plt.figure()
+    plt.title(title)
+    plt.xlabel("lambda")
+    plt.ylabel("minDCF")
+    plt.xscale('log')
+
+    for k in plot_dict.keys():
+        if k[1] == -1:
+            legend = f"LinearLogReg: no PCA, Z-norm={k[0]}"
+        else:
+            legend = f"LinearLogReg: PCA_dim={k[1]}, Z-norm={k[0]}"
+
+        plt.plot(_lambdas, plot_dict[k], label = legend)
+    plt.legend()
+    plt.show()
+
+def linearSVM_perf_plot(path, working_point, title):
+    DTR, LTR = load_data('dataset/Train.txt')
+    folds, labels_folds = split_k_folds(DTR, LTR, 5, 22)
+    labels = np.concatenate(labels_folds)
+
+    c = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2]
+    plot_dict = {}
+
+    for apply_znorm in [True]:#, False]:
+        for pca_dim in [-1, 9]:#, 8, 7, 6]:
+            plot_dict[(apply_znorm, pca_dim)] = []
+            for l in c:
+                scores_path = f"{path}/scores_linearSVM_effpr_{to_effective_prior(working_point)}_kv_0_znorm_{apply_znorm}_pcadim_{pca_dim}_c_{l}.npy"
+                scores = np.load(scores_path)
+
+                plot_dict[(apply_znorm, pca_dim)].append(minimum_bayes_risk(scores.reshape(scores.size,), labels, working_point, svm_scores=True))
+
+            print(f"Done {(apply_znorm, pca_dim)}")
+
+    plt.figure()
+    plt.title(title)
+    plt.xlabel("lambda")
+    plt.ylabel("minDCF")
+    plt.xscale('log')
+
+    for k in plot_dict.keys():
+        if k[1] == -1:
+            legend = f"LinearSVM: no PCA, Z-norm={k[0]}"
+        else:
+            legend = f"LinearSVM: PCA_dim={k[1]}, Z-norm={k[0]}"
+
+        plt.plot(c, plot_dict[k], label = legend)
+    plt.legend()
+    plt.show()
+
+def polySVM_perf_plot(path, working_point, title):
+    DTR, LTR = load_data('dataset/Train.txt')
+    folds, labels_folds = split_k_folds(DTR, LTR, 5, 22)
+    labels = np.concatenate(labels_folds)
+
+    c = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2]
+    plot_dict = {}
+
+    for c_poly_hyperp in [0, 1]:#[0, 1]:
+        for apply_znorm in [True, False]:
+            for pca_dim in [-1, 6]:
+                plot_dict[(apply_znorm, c_poly_hyperp, pca_dim)] = []
+                for l in c:
+                    scores_path = f"{path}/scores_polySVM_effpr_{to_effective_prior(working_point)}_degree_2_const_{c_poly_hyperp}_kv_0_znorm_{apply_znorm}_pcadim_{pca_dim}_c_{l}.npy"
+                    scores = np.load(scores_path)
+
+                    plot_dict[(apply_znorm, c_poly_hyperp, pca_dim)].append(minimum_bayes_risk(scores.reshape(scores.size,), labels, working_point, svm_scores=True))
+
+                print(f"Done {(apply_znorm, c_poly_hyperp, pca_dim)}")
+
+    plt.figure()
+    plt.title(title)
+    plt.xlabel("C")
+    plt.ylabel("minDCF")
+    plt.xscale('log')
+
+    for k in plot_dict.keys():
+        if k[2] == -1:
+            legend = f"Poly(2)SVM: c_poly={k[1]}, Z-norm={k[0]}, no PCA"
+        else:
+            legend = f"Poly(2)SVM: c_poly={k[1]}, Z-norm={k[0]}, PCA_dim={k[2]}"
+
+        plt.plot(c, plot_dict[k], label = legend)
+    plt.legend()
+    plt.show()
+
+def poly_third_SVM_perf_plot(path, working_point, title):
+    DTR, LTR = load_data('dataset/Train.txt')
+    folds, labels_folds = split_k_folds(DTR, LTR, 5, 22)
+    labels = np.concatenate(labels_folds)
+
+    c = [1e-2, 1e-1, 1e0]
+    plot_dict = {}
+
+    for c_poly_hyperp in [1]:#[0, 1]:
+        for apply_znorm in [False]:
+            for pca_dim in [6]:
+                plot_dict[(apply_znorm, c_poly_hyperp, pca_dim)] = []
+                for l in c:
+                    scores_path = f"{path}/scores_polySVM_effpr_{to_effective_prior(working_point)}_degree_3_const_{c_poly_hyperp}_kv_0_znorm_{apply_znorm}_pcadim_{pca_dim}_c_{l}.npy"
+                    scores = np.load(scores_path)
+
+                    plot_dict[(apply_znorm, c_poly_hyperp, pca_dim)].append(minimum_bayes_risk(scores.reshape(scores.size,), labels, working_point, svm_scores=True))
+
+                print(f"Done {(apply_znorm, c_poly_hyperp, pca_dim)}")
+
+    plt.figure()
+    plt.title(title)
+    plt.xlabel("C")
+    plt.ylabel("minDCF")
+    plt.xscale('log')
+
+    for k in plot_dict.keys():
+        if k[2] == -1:
+            legend = f"Poly(2)SVM: c_poly={k[1]}, Z-norm={k[0]}, no PCA"
+        else:
+            legend = f"Poly(2)SVM: c_poly={k[1]}, Z-norm={k[0]}, PCA_dim={k[2]}"
+
+        plt.plot(c, plot_dict[k], label = legend)
+    plt.legend()
+    plt.show()
+
+def rbfSVM_perf_plot(path, working_point, title):
+    DTR, LTR = load_data('dataset/Train.txt')
+    folds, labels_folds = split_k_folds(DTR, LTR, 5, 22)
+    labels = np.concatenate(labels_folds)
+
+    c = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2]
+    plot_dict = {}
+
+    for gamma in [1e-5, 0.0001, 0.001]:
+        for apply_znorm in [True, False]:
+            for pca_dim in [-1, 6]:
+                plot_dict[(apply_znorm, gamma, pca_dim)] = []
+                for l in c:
+                    scores_path = f"{path}/scores_rbfSVM_effpr_{to_effective_prior(working_point)}_gamma_{gamma}_kv_0_znorm_{apply_znorm}_pcadim_{pca_dim}_c_{l}.npy"
+                    scores = np.load(scores_path)
+
+                    plot_dict[(apply_znorm, gamma, pca_dim)].append(minimum_bayes_risk(scores.reshape(scores.size,), labels, working_point, svm_scores=True))
+
+                print(f"Done {(apply_znorm, gamma, pca_dim)}")
+
+    plt.figure()
+    plt.title(title)
+    plt.xlabel("C")
+    plt.ylabel("minDCF")
+    plt.xscale('log')
+
+    for k in plot_dict.keys():
+        if k[2] == -1:
+            legend = f"RBF SVM: γ={k[1]}, Z-norm={k[0]}, no PCA"
+        else:
+            legend = f"RBFSVM: γ={k[1]}, Z-norm={k[0]}, PCA_dim={k[2]}"
+
+        line_syle='solid'
+        if k[1] == 1e-5:
+            line_syle = 'dotted'
+        if k[1] == 0.0001:
+            line_syle = 'dashdot'
+
+        plt.plot(c, plot_dict[k], label=legend, linestyle=line_syle)
+    plt.legend()
+    plt.show()
+
+if __name__ == "__main__":
+    #logreg_perf_plot("logreg/results_linear", (0.5, 1, 10), "Linear LogReg")
+    #linearSVM_perf_plot("svm/results_linear", (0.5, 1, 10), "Linear SVM")
+    #polySVM_perf_plot("svm/results_poly", (0.5, 1, 10), "Poly(2) SVM")
+    #rbfSVM_perf_plot("svm/results_rbf", (0.5, 1, 10), "RBF SVM")
+    poly_third_SVM_perf_plot("svm/results_poly_3rd", (0.5, 1, 10), "Poly(3) SVM")
+

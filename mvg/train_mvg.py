@@ -28,7 +28,7 @@ def train_mvg():
     folds, labels_folds = split_k_folds(DTR, LTR, K, TRAIN_SEED)
     labels_sh = np.concatenate(labels_folds)
 
-    path = os.getcwd() + '/mvg/results'
+    path = os.getcwd() + f'/mvg/results_effPr_{eff_prior}'
     if not os.path.isdir(path):
         os.mkdir(path)
 
