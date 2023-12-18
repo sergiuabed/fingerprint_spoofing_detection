@@ -4,6 +4,7 @@ from utils.dimensionality_reduction import PCA_matrix
 from mvg.mvg import MVG_classifier_wrap
 from logreg.logreg import logreg_prior_weighted_obj_wrap, logistic_regression_wrap
 from svm.svm import kernel_polynomial_wrap, kernel_rbf_wrap, svm_dual_classifier_wrap
+from gmm.gmm import gmm_classifier_wrap
 import os
 import pickle
 import numpy as np
@@ -200,12 +201,78 @@ def svm_evaluation(DTE, LTE, DTR, LTR, working_point):
                 else:
                     np.save(f"{scores_path}/scores_rbfSVM_effpr_{to_effective_prior(working_point)}_gamma_{0.001}_kv_0_znorm_{apply_znorm}_pcadim_{pca_dim}_c_{c}.npy", scores)
 
+def gmm_evaluation(DTE, LTE, DTR, LTR, working_point):
+    '''
+    Best configs:   PCA_dim: 6  target_mode: default    nontarget_mode: default    targetNumComps: 1  nontargetNumComps: 8  0.2461  GOOD
+                    PCA_dim: 6  target_mode: default    nontarget_mode: diag       targetNumComps: 1  nontargetNumComps: 8  0.2486
+                    PCA_dim: 6  target_mode: diag       nontarget_mode: default    targetNumComps: 2  nontargetNumComps: 8  0.2449  GOOD
+                    PCA_dim: 6  target_mode: diag       nontarget_mode: diag       targetNumComps: 2  nontargetNumComps: 8  0.2483
+                    PCA_dim: 6  target_mode: tied       nontarget_mode: default    targetNumComps: 2  nontargetNumComps: 8  0.2462  GOOD
+                    PCA_dim: 6  target_mode: tied       nontarget_mode: diag       targetNumComps: 2  nontargetNumComps: 8  0.2486
+    '''
+
+    log_path = './evaluation_logs'
+    if not os.path.isdir(log_path):
+        os.mkdir(log_path)
+
+    scores_path = f"{log_path}/gmm_scores"
+    if not os.path.isdir(scores_path):
+        os.mkdir(scores_path)
+
+#    params_path = 'gmm/results/params_gmm_effpr_0.09090909090909091_targetmode_default_nontargetmode_default_pcaDim_6'
+#    with open(params_path, 'rb') as g:
+#        params = pickle.load(g)
+#
+#    print(params[1][0])
+#    print()
+#    print(params[0][1])
+
+    with open(f"{log_path}/gmm_log.txt", 'w') as f:
+        pca_dim = 6
+        #for mode_target in ['default', 'diag', 'tied']:
+        #    for mode_nontarget in ['default', 'diag', 'tied']:
+        for mode_target, mode_nontarget, targetNumComps, nontargetNumComps in [('default', 'default', 1, 8), ('diag', 'default', 2, 8), ('tied', 'default', 2, 8)]:
+            print(f"----------------PCA_dim: {pca_dim}  target_mode: {mode_target} nontarget_mode: {mode_nontarget}  targetNumComps: {targetNumComps}  nontargetNumComps: {nontargetNumComps}----------------\n")
+            f.write(f"----------------PCA_dim: {pca_dim}  target_mode: {mode_target} nontarget_mode: {mode_nontarget}  targetNumComps: {targetNumComps}  nontargetNumComps: {nontargetNumComps}----------------\n")
+
+            # apply pca
+            mu_train = datasetMean(DTR)
+            if pca_dim < 0:
+                DTE_proj = DTE - mu_train
+            else:
+                s, P = PCA_matrix(DTR, pca_dim)
+                DTE_proj = np.dot(P.T, DTE - mu_train)
+
+            params_path = f"gmm/results/params_gmm_effpr_0.09090909090909091_targetmode_{mode_target}_nontargetmode_{mode_nontarget}_pcaDim_{pca_dim}"
+            with open(params_path, 'rb') as g:
+                gmm_params = pickle.load(g)
+
+            gmm_target = gmm_params[1][int(np.log2(targetNumComps))]
+            gmm_nontarget = gmm_params[0][int(np.log2(nontargetNumComps))]
+
+            gmm_classifier = gmm_classifier_wrap({0: gmm_nontarget, 1: gmm_target})
+            scores = gmm_classifier(DTE_proj)
+
+            pl = binary_optimal_bayes_decision(scores, working_point)
+            cm = get_confusion_matrix(pl.reshape((pl.size,)), LTE, 2)
+
+            print(cm)
+
+            _, dcfn = bayes_risk(cm, working_point)
+            mindcf = minimum_bayes_risk(scores.reshape((scores.size,)), LTE, working_point)
+
+            print(f"Minimum DCF: {mindcf}   Actual DCF: {dcfn}\n")
+            f.write(f"Minimum DCF: {mindcf} Actual DCF: {dcfn}\n\n")
+
+            np.save(f"{scores_path}/scores_gmm_effpr_{to_effective_prior(working_point)}_targetmode_{mode_target}_nontargetmode_{mode_nontarget}_targetNumComps_{targetNumComps}_nontargetNumComps_{targetNumComps}_pcadim_{pca_dim}", scores)
+
+
 if __name__ == '__main__':
     DTR, LTR = load_data('./dataset/Train.txt')
     DTE, LTE = load_data('./dataset/Test.txt')
 
     #mvg_evaluation(DTE, LTE, DTR, LTR, 'mvg/results', (0.5, 1, 10))
-    logreg_evaluation(DTE, LTE, DTR, LTR, (0.5, 1, 10))
+    #logreg_evaluation(DTE, LTE, DTR, LTR, (0.5, 1, 10))
     #svm_evaluation(DTE, LTE, DTR, LTR, (0.5, 1, 10))
-
+    gmm_evaluation(DTE, LTE, DTR, LTR, (0.5, 1, 10))
     
