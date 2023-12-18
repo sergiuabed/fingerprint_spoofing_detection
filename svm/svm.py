@@ -1,8 +1,8 @@
 import numpy as np
 import scipy.optimize
 import sklearn
-from data_utils import split_k_folds, covarMat, datasetMean, get_empirical_prior, z_norm
-from dimensionality_reduction import PCA_matrix
+from utils.data_utils import split_k_folds, covarMat, datasetMean, get_empirical_prior, z_norm
+from utils.dimensionality_reduction import PCA_matrix
 
 def kernel_polynomial_wrap(c, degree, k):
     '''

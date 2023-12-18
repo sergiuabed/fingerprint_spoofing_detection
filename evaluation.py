@@ -1,8 +1,9 @@
 from utils.measurements import minimum_bayes_risk, binary_optimal_bayes_decision, get_confusion_matrix, bayes_risk
-from utils.data_utils import load_data, to_effective_prior, datasetMean, z_norm, expand_features
+from utils.data_utils import load_data, to_effective_prior, datasetMean, z_norm, expand_features, split_k_folds
 from utils.dimensionality_reduction import PCA_matrix
 from mvg.mvg import MVG_classifier_wrap
 from logreg.logreg import logreg_prior_weighted_obj_wrap, logistic_regression_wrap
+from svm.svm import kernel_polynomial_wrap, kernel_rbf_wrap, svm_dual_classifier_wrap
 import os
 import pickle
 import numpy as np
@@ -113,9 +114,9 @@ def logreg_evaluation(DTE, LTE, DTR, LTR, working_point):
                     f.write(f"Minimum DCF: {mindcf}   Actual DCF: {dcfn}\n\n")
 
                     # save scores and params
-                    np.save(f"{scores_path}/scores_quadrlogreg_effpr_{target_eff_prior}_znorm_{apply_znorm}_pcadim_{pca_dim}_lambda_{_lambda}", scores)
+                    np.save(f"{scores_path}/eval_scores_quadrlogreg_effpr_{target_eff_prior}_znorm_{apply_znorm}_pcadim_{pca_dim}_lambda_{_lambda}", scores)
 
-def svm_evaluation(DTE, LTE, DTR, LTR, params_path, working_point):
+def svm_evaluation(DTE, LTE, DTR, LTR, working_point):
     '''
     Best configs quadr poly:    (degree: 2 const: 1  kv: 0  apply_znorm: False  PCA_dim: 6)
                                 (degree: 2 const: 1  kv: 0  apply_znorm: True  PCA_dim: -1)
@@ -124,31 +125,87 @@ def svm_evaluation(DTE, LTE, DTR, LTR, params_path, working_point):
                         (gamma: 0.001  kv: 0  apply_znorm: False  PCA_dim: 6)
     '''
 
-    # z-normalization
-#    if apply_znorm is True:
-#        train_folds_znorm, mu, sd = z_norm(train_folds)
-#        test_fold_znorm, _, _ = z_norm(test_fold, mu, sd)
-#    else:
-#        mu = datasetMean(train_folds)
-#        train_folds_znorm = train_folds - mu
-#        test_fold_znorm = test_fold - mu
-#
-#    # pca
-#    if pca_dim < 0:
-#        train_folds_proj = train_folds_znorm
-#        test_fold_proj = test_fold_znorm
-#    else:
-#        mu_train = datasetMean(train_folds_znorm)
-#        s, P = PCA_matrix(train_folds_znorm, pca_dim)
-#        train_folds_proj = np.dot(P.T, train_folds_znorm - mu_train)   #project on lower space
-#        test_fold_proj = np.dot(P.T, test_fold_znorm - mu_train)
-    
-    #TO BE COMPLETED
+    log_path = './evaluation_logs'
+    if not os.path.isdir(log_path):
+        os.mkdir(log_path)
+
+    scores_path = f"{log_path}/svm_scores"
+    if not os.path.isdir(scores_path):
+        os.mkdir(scores_path)
+
+    ## split DTR in the same way as during training
+    #folds, labels_folds = split_k_folds(DTR, LTR, 5, 22)
+    #DTR = np.hstack(folds)
+    #LTR = np.concatenate(labels_folds)
+
+    LTR[LTR == 0] = -1
+    #LTE[LTE == 0] = -1
+
+    target_eff_prior = to_effective_prior((0.5, 1, 10))
+
+    poly_kernel = kernel_polynomial_wrap(1, 2, 0)
+    rbf_kernel = kernel_rbf_wrap(0.001, 0)
+
+    with open(f'{log_path}/svm_applicationEffPrior_{to_effective_prior(working_point)}_log.txt', 'w') as f:
+        for pca_dim, apply_znorm, kernel, kernel_type in [(6, False, poly_kernel, 'poly'), (-1, True, poly_kernel, 'poly'), (-1, False, rbf_kernel, 'rbf'), (6, False, rbf_kernel, 'rbf')]:
+            for c in [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 1e1, 1e2]:
+                if kernel_type == 'poly':
+                    print(f"--------------------degree: {2} const: {1}  kv: {0}  apply_znorm: {apply_znorm}  PCA_dim: {pca_dim}  c: {c}--------------------\n")
+                    f.write(f"--------------------degree: {2} const: {1}  kv: {0}  apply_znorm: {apply_znorm}  PCA_dim: {pca_dim}  c: {c}--------------------\n")
+                else:
+                    print(f"--------------------gamma: {0.001}  kv: {0}  apply_znorm: {apply_znorm}  PCA_dim: {pca_dim}  c: {c}--------------------\n")
+                    f.write(f"--------------------gamma: {0.001}  kv: {0}  apply_znorm: {apply_znorm}  PCA_dim: {pca_dim}  c: {c}--------------------\n")
+
+                # z-normalization
+                if apply_znorm is True:
+                    DTR_znorm, mu_tr, sd_tr = z_norm(DTR)
+                    DTE_znorm, _, _ = z_norm(DTE, mu_tr, sd_tr)
+                else:
+                    mu_tr = datasetMean(DTR)
+                    DTR_znorm = DTR - mu_tr
+                    DTE_znorm = DTE - mu_tr
+
+                # pca
+                if pca_dim < 0:
+                    DTR_proj = DTR_znorm
+                    DTE_proj = DTE_znorm
+                else:
+                    mu_tr = datasetMean(DTR_znorm)
+                    s, P = PCA_matrix(DTR_znorm, pca_dim)
+                    DTR_proj = np.dot(P.T, DTR_znorm - mu_tr)   #project on lower space
+                    DTE_proj = np.dot(P.T, DTE_znorm - mu_tr)
+
+                # HERE REPLACE WITH np.load(params_{}...)
+                if kernel_type == 'poly':
+                    _alphas = np.load(f"svm/results_poly/params_polySVM_effpr_{target_eff_prior}_degree_2_const_1_kv_0_znorm_{apply_znorm}_pcadim_{pca_dim}_c_{c}.npy")
+                else:
+                    _alphas = np.load(f"svm/results_rbf/params_rbfSVM_effpr_{target_eff_prior}_gamma_{0.001}_kv_0_znorm_{apply_znorm}_pcadim_{pca_dim}_c_{c}.npy")
+
+                svm_dual_classifier, w_b1 = svm_dual_classifier_wrap(_alphas, DTR_proj, LTR, 0, kernel=kernel)
+                scores = svm_dual_classifier(DTE_proj)
+
+                pl = binary_optimal_bayes_decision(scores, working_point, svm_scores=True)
+                cm = get_confusion_matrix(pl.reshape((pl.size,)), LTE, 2)
+
+                print(cm)
+
+                _, dcfn = bayes_risk(cm, working_point)
+                mindcf = minimum_bayes_risk(scores.reshape((scores.size,)), LTE, working_point, svm_scores=True)
+
+                print(f"Minimum DCF: {mindcf}   Actual DCF: {dcfn}\n")
+                f.write(f"Minimum DCF: {mindcf}   Actual DCF: {dcfn}\n\n")
+
+                if kernel_type == 'poly':
+                    np.save(f"{scores_path}/scores_polySVM_effpr_{to_effective_prior(working_point)}_degree_2_const_1_kv_0_znorm_{apply_znorm}_pcadim_{pca_dim}_c_{c}.npy", scores)
+                else:
+                    np.save(f"{scores_path}/scores_rbfSVM_effpr_{to_effective_prior(working_point)}_gamma_{0.001}_kv_0_znorm_{apply_znorm}_pcadim_{pca_dim}_c_{c}.npy", scores)
 
 if __name__ == '__main__':
     DTR, LTR = load_data('./dataset/Train.txt')
     DTE, LTE = load_data('./dataset/Test.txt')
 
     #mvg_evaluation(DTE, LTE, DTR, LTR, 'mvg/results', (0.5, 1, 10))
-    #logreg_evaluation(DTE, LTE, DTR, LTR, (0.5, 1, 10))
+    logreg_evaluation(DTE, LTE, DTR, LTR, (0.5, 1, 10))
+    #svm_evaluation(DTE, LTE, DTR, LTR, (0.5, 1, 10))
+
     

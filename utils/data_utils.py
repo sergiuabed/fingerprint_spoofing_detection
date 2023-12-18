@@ -79,7 +79,8 @@ def get_empirical_prior(LTR):
 def z_norm(DTR, mu=None, sd=None):
 
     if mu is None:
-        DTR_c = DTR - datasetMean(DTR)
+        mu = datasetMean(DTR)
+        DTR_c = DTR - mu
     else:
         DTR_c = DTR - mu
 
