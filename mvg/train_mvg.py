@@ -68,6 +68,35 @@ def train_mvg():
                 #bayes_error_plot(scores.reshape(scores.size,), labels_sh)
 
 
+def compute_minDCF_MVG(DTR, LTR, working_point):
+    eff_prior = to_effective_prior(working_point)
+
+    folds, labels_folds = split_k_folds(DTR, LTR, K, TRAIN_SEED)
+    labels_sh = np.concatenate(labels_folds)
+
+    logs_path = f"mvg/results/log_effpr_{eff_prior}.txt"
+
+    with open(logs_path, 'w') as f:
+        for mode in ['default', 'diag', 'tied']:
+            for pca_dim in [-1, 9, 8, 7, 6]:
+                print(f"--------------------mode: {mode}     PCA_dim: {pca_dim}--------------------\n")
+                f.write(f"--------------------mode: {mode}     PCA_dim: {pca_dim}--------------------\n")
+
+                scores = np.load(f"mvg/results/scores_mvg_effpr_0.09090909090909091_mode_{mode}_pcadim_{pca_dim}.npy")
+
+                pl = binary_optimal_bayes_decision(scores, working_point)
+                cm = get_confusion_matrix(pl.reshape((pl.size,)), labels_sh, 2)
+
+                print("Confusion matrix:")
+                print(cm)
+
+                _, dcfn = bayes_risk(cm, working_point)
+                mindcf = minimum_bayes_risk(scores.reshape((scores.size,)), labels_sh, working_point)
+
+                print(f"Minimum DCF: {mindcf}   Actual DCF: {dcfn}\n")
+                f.write(f"Minimum DCF: {mindcf} Actual DCF: {dcfn}\n\n")
 
 if __name__ == '__main__':
     train_mvg()
+    #DTR, LTR = load_data('dataset/Train.txt')
+    #compute_minDCF_MVG(DTR, LTR, (0.5, 1, 10))

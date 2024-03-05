@@ -55,9 +55,9 @@ def logreg_evaluation(DTE, LTE, DTR, LTR, working_point):
 
     target_eff_prior = to_effective_prior((0.5, 1, 10))
     # train on whole data
-    with open(f'{log_path}/quadr_logreg_log.txt', 'w') as f:
+    with open(f'{log_path}/quadr_logreg_log.txt', 'a') as f:
         for apply_znorm in [False]: #[True, False]:
-            for pca_dim in [-1, 7, 6]:
+            for pca_dim in [9]:#, 7, 6]:
                 for _lambda in [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2]:
                     print(f"--------------------apply_znorm: {apply_znorm}  PCA_dim: {pca_dim}  lambda: {_lambda}--------------------\n")
                     f.write(f"--------------------apply_znorm: {apply_znorm}  PCA_dim: {pca_dim}  lambda: {_lambda}--------------------\n")
@@ -201,7 +201,7 @@ def svm_evaluation(DTE, LTE, DTR, LTR, working_point):
                 else:
                     np.save(f"{scores_path}/scores_rbfSVM_effpr_{to_effective_prior(working_point)}_gamma_{0.001}_kv_0_znorm_{apply_znorm}_pcadim_{pca_dim}_c_{c}.npy", scores)
 
-def gmm_evaluation(DTE, LTE, DTR, LTR, working_point):
+def gmm_evaluation(DTE, LTE, DTR, LTR, working_point, alt_working_point1, alt_working_point2):
     '''
     Best configs:   PCA_dim: 6  target_mode: default    nontarget_mode: default    targetNumComps: 1  nontargetNumComps: 8  0.2461  GOOD
                     PCA_dim: 6  target_mode: default    nontarget_mode: diag       targetNumComps: 1  nontargetNumComps: 8  0.2486
@@ -231,7 +231,7 @@ def gmm_evaluation(DTE, LTE, DTR, LTR, working_point):
         pca_dim = 6
         #for mode_target in ['default', 'diag', 'tied']:
         #    for mode_nontarget in ['default', 'diag', 'tied']:
-        for mode_target, mode_nontarget, targetNumComps, nontargetNumComps in [('default', 'default', 1, 8), ('diag', 'default', 2, 8), ('tied', 'default', 2, 8)]:
+        for mode_target, mode_nontarget, targetNumComps, nontargetNumComps in [('default', 'default', 1, 8), ('diag', 'default', 2, 8), ('tied', 'default', 2, 8), ('default', 'diag', 1, 8), ('diag', 'diag', 2, 8), ('tied', 'diag', 2, 8)]:
             print(f"----------------PCA_dim: {pca_dim}  target_mode: {mode_target} nontarget_mode: {mode_nontarget}  targetNumComps: {targetNumComps}  nontargetNumComps: {nontargetNumComps}----------------\n")
             f.write(f"----------------PCA_dim: {pca_dim}  target_mode: {mode_target} nontarget_mode: {mode_nontarget}  targetNumComps: {targetNumComps}  nontargetNumComps: {nontargetNumComps}----------------\n")
 
@@ -260,11 +260,13 @@ def gmm_evaluation(DTE, LTE, DTR, LTR, working_point):
 
             _, dcfn = bayes_risk(cm, working_point)
             mindcf = minimum_bayes_risk(scores.reshape((scores.size,)), LTE, working_point)
+            mindcf_alt1 = minimum_bayes_risk(scores.reshape((scores.size,)), LTE, alt_working_point1) #alt_working_point1
+            mindcf_alt2 = minimum_bayes_risk(scores.reshape((scores.size,)), LTE, alt_working_point2)
 
-            print(f"Minimum DCF: {mindcf}   Actual DCF: {dcfn}\n")
-            f.write(f"Minimum DCF: {mindcf} Actual DCF: {dcfn}\n\n")
+            print(f"minDCF({to_effective_prior(working_point)}): {mindcf}   minDCF({to_effective_prior(alt_working_point1)}): {mindcf_alt1}   minDCF({to_effective_prior(alt_working_point2)}): {mindcf_alt2}\n")
+            f.write(f"minDCF({to_effective_prior(working_point)}): {mindcf}   minDCF({to_effective_prior(alt_working_point1)}): {mindcf_alt1}   minDCF({to_effective_prior(alt_working_point2)}): {mindcf_alt2}\n")
 
-            np.save(f"{scores_path}/scores_gmm_effpr_{to_effective_prior(working_point)}_targetmode_{mode_target}_nontargetmode_{mode_nontarget}_targetNumComps_{targetNumComps}_nontargetNumComps_{targetNumComps}_pcadim_{pca_dim}", scores)
+            np.save(f"{scores_path}/scores_gmm_effpr_{to_effective_prior(working_point)}_targetmode_{mode_target}_nontargetmode_{mode_nontarget}_targetNumComps_{targetNumComps}_nontargetNumComps_{nontargetNumComps}_pcadim_{pca_dim}", scores)
 
 
 if __name__ == '__main__':
@@ -274,5 +276,5 @@ if __name__ == '__main__':
     #mvg_evaluation(DTE, LTE, DTR, LTR, 'mvg/results', (0.5, 1, 10))
     #logreg_evaluation(DTE, LTE, DTR, LTR, (0.5, 1, 10))
     #svm_evaluation(DTE, LTE, DTR, LTR, (0.5, 1, 10))
-    gmm_evaluation(DTE, LTE, DTR, LTR, (0.5, 1, 10))
+    gmm_evaluation(DTE, LTE, DTR, LTR, (0.5, 1, 10), (0.5, 1, 1), (0.9, 1, 1))
     

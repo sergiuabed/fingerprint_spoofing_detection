@@ -47,7 +47,7 @@ def train_svm():
         for kv in [0]:
             for apply_znorm in [True, False]:
                 for pca_dim in [-1, 7, 6]:#[-1, 9, 8, 7, 6]:
-                    for c in [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 1e1, 1e2]:
+                    for c in [1.0]:#[1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 1e1, 1e2]:
                         print(f"--------------------kv: {kv}  apply_znorm: {apply_znorm}  PCA_dim: {pca_dim}  c: {c}--------------------\n")
                         f.write(f"--------------------kv: {kv}  apply_znorm: {apply_znorm}  PCA_dim: {pca_dim}  c: {c}--------------------\n")
 
@@ -205,9 +205,9 @@ if __name__ == '__main__':
 #    print(f"Nr samples: {nr_samples}")
 #    print(f"Priors: {priors}")
     
-#    train_svm()
+    train_svm()
 #    train_svm_poly()
-    train_svm_rbf()
+#    train_svm_rbf()
 
 
 #    eff_prior = to_effective_prior((0.5, 1, 10))

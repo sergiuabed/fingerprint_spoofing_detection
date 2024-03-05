@@ -204,7 +204,7 @@ def MVG_parameters(DTR, LTR, mode='default'):
 
             means[l] = mean
         
-        cov_avg = cov_sum / X.shape[1]
+        cov_avg = cov_sum / DTR.shape[1]
         covariances = [cov_avg for l in labels]
     else:
         for l in labels:
